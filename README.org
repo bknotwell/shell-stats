@@ -1,0 +1,277 @@
+#+TITLE:   Shell stats
+* Background, rationale and constraints
+The [[https://www.r-project.org/][R language]] has several functions that would be useful in various
+shell scripts:
+- [[https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/summary][summary]] :: a function that takes numeric input and returns min, max,
+  mean, median, 25th and 75th percentile cutoffs.
+- [[https://www.rdocumentation.org/packages/graphics/versions/3.6.2/topics/stem][stem]] :: a function that takes numeric input and creates a [[https://en.wikipedia.org/wiki/Stem-and-leaf_display][stem and leaf]] plot.
+
+*Q:* Why bother?  *A:* Small shell utiities will be more easily used to display
+simple analyses if the user needs to install fewer dependencies.
+*Q:* What dependencies are needed?  *A:* for maximum portability and
+installation convenience, [[https://www.opengroup.org/posix-systems][POSIX-compliant]] methods will be used unless
+the mechanism doesn't exist.
+*Q:* Won't this be slow? *A:* probably. This is about convenience for the
+user as a means of avoiding installing R when they need to run a small
+utility.
+
+* Summary
+As part of building the =summary= function, the following functions must
+be built:
+- =min= :: the minimum value in the data set.
+- =max= :: the maximum value in the data set.
+- =mean= :: the average value in the data set.
+- =median= :: the point in a data set with 50% of elements above and 50%
+  below.
+- quartile :: the 25% or 75% cutoff.
+
+#+begin_src sh :tangle shell-stats.sh :shebang #!/bin/sh
+minmaxhelper() {
+    tr ' ' '\n' | sort -nr | $1 -1
+}
+
+max() {
+    minmaxhelper head
+}
+
+min() {
+    minmaxhelper tail
+}
+
+mean() {
+    if [ $# -eq 1 ]
+    then
+        dp="$1k"
+    else
+        dp="0k"
+    fi
+
+    # the - to _ conversion handles negative numbers
+    tr ' ' '\n' | tr '-' '_' | sed -e ' 
+    1i \
+    0 sC 0
+    s/$/ + lC 1 + sC/
+    $a \
+      lC '"$dp"' / p' | dc
+}
+
+quartile() {
+  tr ' ' '\n' | sort -n |  awk -vquartile="$1" '
+        BEGIN { i = 0; idx=0 }
+        { arr[i] = $1; i++ }
+        END {
+            if(quartile == 1) {
+                idx = (i / 4)
+            }
+            else if(quartile == 3) {
+                idx = (i / 4) * 3
+            }
+            print(arr[int(idx)])
+        }'
+}
+
+median() {
+  tr ' ' '\n' | sort -n |  awk '
+        BEGIN { i = 0; idx=0 }
+        { arr[i] = $1; i++; if(i > 0 && ((i % 2) == 0))idx++; }
+        END {
+            if((i % 2) == 0) {
+                printf("%0.1f", (arr[idx] + arr[idx - 1]) / 2)
+            }
+            else {
+                printf("%d", arr[idx])
+            }
+        }'
+}
+
+summary() {
+    mean_=$(tee $$.tmp | mean)
+    median_=$(median < $$.tmp)
+    first_=$(quartile 1 < $$.tmp)
+    third_=$(quartile 3 < $$.tmp)
+    min_=$(min < $$.tmp)
+    max_=$(max < $$.tmp)
+    rm $$.tmp
+    printf "Summary data: min(%d) first(%d) mean(%0.1f) median(%0.1f) third(%d) max(%d)\n" \
+           $min_ $first_ $mean_ $median_ $third_ $max_
+}
+
+stem() {
+    tr ' ' '\n' | sort -n | awk -v scale=$1 -v width=$2 -v atom=$3 '
+function imin2(a, b) {
+   return(int(a < b ? a : b));
+}
+
+function imax2(a, b) {
+   return(int(a > b ? a : b));
+}
+
+function fabs(x) {
+    return(x < 0 ? -x : x);
+}
+
+function abs(x) {
+    return int(fabs(x));
+}
+
+function log10(x) {
+    return(log(x) / log(10));
+}
+
+function stem_print(close_, dist, ndigits) {
+   if((close_ / 10 == 0) && (dist < 0))
+       printf("  %*s | ", ndigits, "-0");
+   else
+       printf("  %*d | ", ndigits, close_/10);
+}
+
+function stem_leaf(x, scale, width, atom) {
+    printf("\n");
+    mu=10
+    if(x[length(x) - 1] > x[0]) {
+        r = atom + (x[length(x) - 1]  - x[0]) / scale
+        t = log10(r);
+        if(t < 0)
+           t--; 
+        c = 10 ^ int(1.0 - int(t));
+        mm = imin2(2, imax2(0, int(r * c / 25)))
+
+        k = int(3 * mm + 2 - int(150 / (length(x) + 50)))
+        if(((k-1) * (k-2) * (k-5)) == 0)
+            c = c * 10;
+
+        if((k * (k-4) * (k-8)) == 0)
+            mu = 5;
+
+        if(((k-1) * (k-5) * (k-6)) == 0)
+            mu = 20;
+    } else {
+        r = atom + fabs(x[0]) / scale;
+        c = 10 ^ int(1.0 - int(log10(r)));
+    }
+
+    t = int(x[0] * c / mu);
+    if(x[0] < 0)
+        t--;
+    lo = t * mu;
+
+    t = int(x[length(x) - 1] * c / mu);
+    if(x[length(x) - 1] < 0)
+       t--;
+
+    hi = t * mu;
+
+    ldigits = (lo < 0 ? int(log10(-lo)) + 1 : 0);
+    hdigits = (hi > 0 ? int(log10(hi)) : 0);
+
+    if(ldigits < hdigits)
+        ndigits = hdigits;
+    else
+        ndigits = ldigits;
+
+    if(lo < 0 && int(x[0]*c) == lo)
+        lo = lo - mu;
+    hi = lo + mu;
+    if(int(x[0]*c+0.5) > hi) {
+       lo = hi;
+       hi = lo + mu;
+    }
+
+    t = log10(c) + 0.5;
+    if(t < 0)
+       t--;
+    pdigits = 1 - int(t);
+    printf("  The decimal point is ");
+    if(pdigits == 0)
+        printf("at the |\n\n");
+    else
+        printf("%d digit(s) to the %s of the |\n\n", fabs(pdigits),
+               pdigits > 0 ? "right" : "left");
+
+    i = 0;
+    do {
+        if(lo < 0)
+            stem_print(int(hi), int(lo), ndigits);
+        else
+            stem_print(int(lo), int(hi), ndigits);
+
+        j = 0;
+        do {
+           if(x[i] < 0)
+               xi = int(x[i]*c - .5);
+           else
+               xi = int(x[i]*c + .5)
+           if((hi == 0 && x[i] >= 0) ||
+              (lo < 0 && xi > hi) ||
+              (lo >= 0 && xi >= hi))
+               break;
+
+           j++;
+
+           if(j <= width - 12)
+               printf("%1d", abs(xi) % 10);
+ 
+           i++;
+        } while(i < length(x));
+
+        if(j > width)
+            printf("+%d", j - width);
+        printf("\n");
+        if(i >= length(x))
+            break;
+
+        hi += mu;
+        lo += mu;
+    } while(1);
+    printf("\n");
+}
+
+{
+   arr[length(arr)] = $1;
+}
+
+END {
+    stem_leaf(arr, scale, width, atom);
+}
+    '
+}
+
+if [ ! -z $TESTIT  ]
+then
+    dotest() {
+        fn=$1
+        name=$2
+        res="$3"
+        shift; shift; shift
+
+        if [ "$(echo $td | $fn $*)" == "$res" ]
+        then
+            echo "$name passed $(echo $td | $fn $*)"
+        else
+            echo "$name failed $(echo $td | $fn $*)"
+        fi
+    }
+    td="2 1 0 10 15 10 4 3 1 33 66 99 44"
+    dotest min Min 0
+    dotest max Max 99
+    dotest mean Mean 22
+    dotest mean Mean 22.1 1
+    dotest median Median 10
+    dotest quartile Quartile 2 1
+    dotest quartile Quartile 33 3
+    dotest summary Summary "Summary data: min(0) first(2) mean(22.0) median(10.0) third(33) max(99)"
+    td="$td 9"  # test median with an even number of elements"
+    dotest median Median 9.5
+    stemgolden="
+  The decimal point is 1 digit(s) to the right of the |
+
+  0 | 0112349005
+  2 | 3
+  4 | 4
+  6 | 6
+  8 | 9"
+    dotest stem Stem "$stemgolden" 1 80 .00000001
+fi
+#+end_src
+
+#+RESULTS:
