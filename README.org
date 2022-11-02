@@ -278,3 +278,6 @@ fi
 #+end_src
 
 #+RESULTS:
+
+All functions take the same interface--a list of numbers separated by
+  spaces or newlines that's presented to the function on stdin.
