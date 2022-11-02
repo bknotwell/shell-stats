@@ -6,14 +6,16 @@ shell scripts:
   mean, median, 25th and 75th percentile cutoffs.
 - [[https://www.rdocumentation.org/packages/graphics/versions/3.6.2/topics/stem][stem]] :: a function that takes numeric input and creates a [[https://en.wikipedia.org/wiki/Stem-and-leaf_display][stem and leaf]] plot.
 
-*Q:* Why bother?  *A:* Small shell utiities will be more easily used to display
-simple analyses if the user needs to install fewer dependencies.
-*Q:* What dependencies are needed?  *A:* for maximum portability and
-installation convenience, [[https://www.opengroup.org/posix-systems][POSIX-compliant]] methods will be used unless
-the mechanism doesn't exist.
-*Q:* Won't this be slow? *A:* probably. This is about convenience for the
-user as a means of avoiding installing R when they need to run a small
-utility.
+** Q&A
+- Why bother?  :: Small shell utiities will be more easily used to
+  display simple analyses if the user needs to install fewer
+  dependencies.
+- What dependencies are needed?  :: for maximum portability and
+  installation convenience, [[https://www.opengroup.org/posix-systems][POSIX-compliant]] methods will be used
+  unless the mechanism doesn't exist.
+- Won't this be slow? :: probably. This is about convenience for the
+  user as a means of avoiding installing R when they need to run a
+  small utility.
 
 * Summary
 As part of building the =summary= function, the following functions must
@@ -25,6 +27,7 @@ be built:
   below.
 - quartile :: the 25% or 75% cutoff.
 
+An extractable shell script (=source shell-stats.sh=) follows:
 #+begin_src sh :tangle shell-stats.sh :shebang #!/bin/sh
 minmaxhelper() {
     tr ' ' '\n' | sort -nr | $1 -1
