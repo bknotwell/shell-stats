@@ -25,7 +25,8 @@ be built:
 - =mean= :: the average value in the data set.
 - =median= :: the point in a data set with 50% of elements above and 50%
   below.
-- quartile :: the 25% or 75% cutoff.
+- =quartile= :: the 25% or 75% cutoff.
+- =stem= :: output a stem and leaf plot
 
 An extractable shell script (=source shell-stats.sh=) follows:
 #+begin_src sh :tangle shell-stats.sh :shebang #!/bin/sh
